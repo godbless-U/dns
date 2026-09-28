@@ -70,6 +70,7 @@ class _DnsScreenState extends State<DnsScreen> {
     for (var ip in _dnsManager.premiumGamingDns) {
       initialList.add(DnsServer(ip: ip, isPremium: true));
     }
+
     for (var ip in savedIps) {
       if (!_dnsManager.premiumGamingDns.contains(ip)) {
         initialList.add(DnsServer(ip: ip, isPremium: false));
@@ -89,15 +90,21 @@ class _DnsScreenState extends State<DnsScreen> {
   Future<void> huntNewDns() async {
     setState(() => isLoading = true);
 
-    int result = await _dnsManager.fetchFromNetwork();
+    final result = await _dnsManager.fetchFromNetwork();
     if (!mounted) return;
 
-    if (result > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$result سرور جدید پیدا و افزوده شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-    } else if (result == 0) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("همه دی‌ان‌اس‌ها آپدیت هستند (آی‌پی جدیدی نبود).", textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
+    final status = result['status'];
+    final count = result['count'];
+
+    // پیام‌های هوشمند بر اساس نوع پیدا شدن سرورها
+    if (status == 'github_success' && count > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$count سرور جدید مستقیماً از گیت‌هاب شکار شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+    } else if (status == 'github_success' && count == 0) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("گیت‌هاب بررسی شد اما همه آپدیت هستند.", textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
+    } else if (status == 'offline_injected') {
+       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("گیت‌هاب فیلتر بود، اما $count سرور از آرشیو هوشمند داخلی استخراج شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
     } else {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("خطا در اتصال به گیت‌هاب. لطفاً VPN خود را موقتاً روشن کنید.", textDirection: TextDirection.rtl), backgroundColor: Colors.redAccent));
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("تمام منابع جستجو شدند و سرور جدیدی نمانده است.", textDirection: TextDirection.rtl), backgroundColor: Colors.redAccent));
     }
 
     List<String> masterPool = await _dnsManager.loadMasterPool();
@@ -130,6 +137,7 @@ class _DnsScreenState extends State<DnsScreen> {
       isLoading = false;
     });
 
+    // به محض پیدا کردن، بلافاصله شروع به پینگ گرفتن و تست می‌کند
     testAllPingsAndSort();
   }
 
@@ -145,7 +153,7 @@ class _DnsScreenState extends State<DnsScreen> {
       await Future.wait(chunk.map((server) async {
         final stopwatch = Stopwatch()..start();
         try {
-          final socket = await Socket.connect(server.ip, 53, timeout: const Duration(milliseconds: 2000));
+          final socket = await Socket.connect(server.ip, 53, timeout: const Duration(milliseconds: 1500));
           socket.destroy();
           server.ping = stopwatch.elapsedMilliseconds;
         } catch (e) {
@@ -156,6 +164,7 @@ class _DnsScreenState extends State<DnsScreen> {
 
     if (!mounted) return;
     setState(() {
+      // سرورها را به ترتیب بهترین (کمترین) پینگ می‌چیند
       displayList.sort((a, b) => a.ping.compareTo(b.ping));
       isTestingPing = false;
     });
