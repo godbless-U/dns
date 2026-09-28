@@ -5,14 +5,6 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
 
-/**
- * DNS-only VPN profile.
- *
- * Android sends resolver traffic through the VPN DNS server declared by
- * Builder.addDnsServer(). This service deliberately does not implement a
- * packet-forwarding engine; it is therefore a DNS configuration VPN, not a
- * general traffic tunnel.
- */
 class GamingVpnService : VpnService() {
 
     companion object {
@@ -40,11 +32,19 @@ class GamingVpnService : VpnService() {
 
         try {
             val builder = Builder()
-                .setSession("Gaming DNS")
+                .setSession("Gaming DNS ($dnsIp)")
                 .setMtu(1500)
-                .addAddress("10.10.0.2", 32)
+                // اختصاص یک آی‌پی محلی به خود اپلیکیشن
+                .addAddress("10.10.10.2", 24)
+                
+                // اعمال DNS انتخابی شما روی سیستم
                 .addDnsServer(dnsIp)
-                .addRoute(dnsIp, 32)
+                
+                // تکنیک جلوگیری از قطعی اینترنت (Dummy Route Trick):
+                // ما به جای اینکه آی‌پی اینترنت را وارد تونل کنیم، یک آی‌پی نامعتبر را روت می‌کنیم.
+                // این کار باعث می‌شود اندروید DNS ما را تایید کند، اما ترافیک بازی‌ها و اینترنت 
+                // شما را بدون دستکاری از همان وای‌فای یا نت گوشی عبور دهد (بدون افت سرعت).
+                .addRoute("10.10.10.3", 32)
 
             vpnInterface = builder.establish()
 
@@ -54,7 +54,7 @@ class GamingVpnService : VpnService() {
                 return
             }
 
-            Log.i(TAG, "VPN started with DNS $dnsIp")
+            Log.i(TAG, "DNS Optimizer successfully applied: $dnsIp")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start VPN", e)
             stopInterfaceOnly()
@@ -75,7 +75,7 @@ class GamingVpnService : VpnService() {
     private fun stopVpn() {
         stopInterfaceOnly()
         stopSelf()
-        Log.i(TAG, "VPN stopped")
+        Log.i(TAG, "DNS Optimizer stopped")
     }
 
     override fun onDestroy() {
