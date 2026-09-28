@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,10 +9,16 @@ class DnsManager {
   static const _masterPoolKey = 'master_dns_pool';
   static const _displayListKey = 'display_dns_list';
 
-  // سرورهای پرمیوم پایه و ثابت (بهترین‌های پابلیک)
   final List<String> premiumGamingDns = const [
     '78.157.42.100', '176.119.1.1', '10.202.10.10', '119.29.29.29',
     '223.5.5.5', '8.26.56.26', '209.244.0.3', '1.1.1.1', '8.8.8.8',
+  ];
+
+  final List<String> _deepArchiveDns = const [
+    '1.0.0.1', '8.8.4.4', '9.9.9.9', '149.112.112.112', '208.67.222.222',
+    '208.67.220.220', '8.20.247.20', '94.140.14.14', '94.140.15.15',
+    '114.114.114.114', '1.2.4.8', '77.88.8.8', '185.228.168.9',
+    '198.101.242.72', '23.253.163.53', '176.103.130.130', '185.51.200.2',
   ];
 
   bool isValidIp(String ip) {
@@ -26,9 +33,28 @@ class DnsManager {
 
     final a = octets[0]!;
     final b = octets[1]!;
-    // حذف آی‌پی‌های لوکال و نامعتبر
     final isPrivate = a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) || a == 127 || (a == 169 && b == 254);
     return !isPrivate;
+  }
+
+  // تکنیک انتزاعی تولید لینک‌های ضد تحریم برای هر مخزن گیت‌هاب
+  List<String> generateMirrors(String repoPath) {
+    final parts = repoPath.split('/');
+    if(parts.length < 4) return [];
+    final owner = parts[0];
+    final repo = parts[1];
+    final branch = parts[2];
+    final path = parts.sublist(3).join('/');
+    
+    return [
+      'https://cdn.jsdelivr.net/gh/$owner/$repo@$branch/$path',
+      'https://fastly.jsdelivr.net/gh/$owner/$repo@$branch/$path',
+      'https://raw.githack.com/$owner/$repo/$branch/$path',
+      'https://ghproxy.com/https://raw.githubusercontent.com/$owner/$repo/$branch/$path',
+      'https://mirror.ghproxy.com/https://raw.githubusercontent.com/$owner/$repo/$branch/$path',
+      'https://cdn.statically.io/gh/$owner/$repo/$branch/$path',
+      'https://raw.kkgithub.com/$owner/$repo/$branch/$path',
+    ];
   }
 
   Future<void> saveSources(List<String> sources) async {
@@ -38,23 +64,7 @@ class DnsManager {
 
   Future<List<String>> loadSources() async {
     final prefs = await SharedPreferences.getInstance();
-    final sources = prefs.getStringList(_sourcesKey);
-    
-    // ادغام دیتابیس‌های Luna-Dns (مخصوص گیم) و Public-DNS با مسیرهای ضدتحریم
-    return sources == null || sources.isEmpty
-        ? const [
-            // مخزن Luna-Dns (تخصصی برای PUBG, CoD Mobile, Mobile Legends)
-            'https://fastly.jsdelivr.net/gh/Luna-Dns/Luna-Dns@main/dns.txt',
-            'https://raw.kkgithub.com/Luna-Dns/Luna-Dns/main/dns.txt',
-            
-            // مخزن Public DNS Directory (لیست جهانی و عظیم)
-            'https://fastly.jsdelivr.net/gh/public-dns/public-dns-directory@master/nameservers.txt',
-            'https://raw.kkgithub.com/public-dns/public-dns-directory/master/nameservers.txt',
-            
-            // مخزن کمکی و پشتیبان
-            'https://fastly.jsdelivr.net/gh/smokeme/Public-DNS-Collector@main/lists/ipv4.txt'
-          ]
-        : sources;
+    return prefs.getStringList(_sourcesKey) ?? <String>[];
   }
 
   Future<void> saveMasterPool(List<String> ips) async {
@@ -79,7 +89,6 @@ class DnsManager {
 
   List<String> extractIpsFromText(String text) {
     final found = <String>{};
-    // این موتور به صورت هوشمند آی‌پی‌ها را از بین کدهای HTML، فایل‌های CSV یا متون ساده بیرون می‌کشد
     final candidates = RegExp(r'(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)').allMatches(text);
     for (final match in candidates) {
       final ip = match.group(0)!;
@@ -89,37 +98,73 @@ class DnsManager {
   }
 
   Future<Map<String, dynamic>> fetchFromNetwork() async {
-    final sources = await loadSources();
     final masterPool = (await loadMasterPool()).toSet();
     int initialSize = masterPool.length;
-    bool success = false;
+    bool atLeastOneSuccess = false;
 
-    for (final rawUrl in sources) {
-      final url = rawUrl.trim();
-      if (url.isEmpty) continue;
-      try {
-        final response = await http
-            .get(Uri.parse(url), headers: const {'User-Agent': 'Mozilla/5.0'})
-            .timeout(const Duration(seconds: 15));
-        
-        if (response.statusCode == 200 && response.body.isNotEmpty) {
-          success = true;
-          final extracted = extractIpsFromText(response.body);
-          masterPool.addAll(extracted);
+    // لیست مخازن درخواستی شما (گیمینگ و عمومی)
+    final repos = [
+      'Luna-Dns/Luna-Dns/main/dns.txt',
+      'public-dns/public-dns-directory/master/nameservers.txt',
+      'smokeme/Public-DNS-Collector/main/lists/ipv4.txt'
+    ];
+
+    // حمله موازی به CDNها برای دور زدن فایروال
+    for (final repo in repos) {
+      final mirrors = generateMirrors(repo);
+      for (final url in mirrors) {
+        try {
+          final response = await http
+              .get(Uri.parse(url), headers: const {'User-Agent': 'Mozilla/5.0'})
+              .timeout(const Duration(seconds: 8)); 
           
-          // محدودیت دانلود برای جلوگیری از اشغال حافظه رم گوشی (توقف پس از شکار 800 دی‌ان‌اس)
-          if (extracted.length > 800) break; 
+          if (response.statusCode == 200 && response.body.isNotEmpty) {
+            final extracted = extractIpsFromText(response.body);
+            if (extracted.isNotEmpty) {
+              masterPool.addAll(extracted);
+              atLeastOneSuccess = true;
+              break; // به محض موفقیت در یک مخزن، دیگر نیازی به تست بقیه آینه‌ها نیست
+            }
+          }
+        } catch (_) {
+          // در صورت قطعی اینترنت، به صورت سایلنت به سراغ آینه بعدی می‌رود
         }
-      } catch (_) {
-        // نادیده گرفتن خطا و پرش به لینک جایگزین بعدی
       }
+    }
+
+    // دریافت از لینک‌های اضافه‌شده دستی توسط کاربر
+    final customSources = await loadSources();
+    for (final url in customSources) {
+      try {
+        final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+        if (response.statusCode == 200) {
+          masterPool.addAll(extractIpsFromText(response.body));
+          atLeastOneSuccess = true;
+        }
+      } catch (_) {}
     }
 
     int newAdded = masterPool.length - initialSize;
 
-    if (success || newAdded > 0) {
+    if (atLeastOneSuccess) {
       await saveMasterPool(masterPool.toList());
       return {'status': 'success', 'count': newAdded};
+    }
+
+    // تزریق آفلاین در صورت قطع کامل اینترنت
+    int offlineAdded = 0;
+    final random = Random();
+    List<String> shuffledArchive = List.from(_deepArchiveDns)..shuffle(random);
+    for (var ip in shuffledArchive) {
+      if (masterPool.add(ip)) {
+        offlineAdded++;
+        if (offlineAdded >= 10) break;
+      }
+    }
+
+    if (offlineAdded > 0) {
+      await saveMasterPool(masterPool.toList());
+      return {'status': 'offline_injected', 'count': offlineAdded};
     }
 
     return {'status': 'error', 'count': 0};
