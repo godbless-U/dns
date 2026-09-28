@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,9 +9,21 @@ class DnsManager {
   static const _masterPoolKey = 'master_dns_pool';
   static const _displayListKey = 'display_dns_list';
 
+  // دی‌ان‌اس‌های اصلی که همیشه در صفحه اول هستند
   final List<String> premiumGamingDns = const [
     '78.157.42.100', '176.119.1.1', '10.202.10.10', '119.29.29.29',
     '223.5.5.5', '8.26.56.26', '209.244.0.3', '1.1.1.1', '8.8.8.8',
+  ];
+
+  // تفکر انتزاعی: آرشیو پنهان برای دور زدن فیلترینگ گیت‌هاب
+  final List<String> _deepArchiveDns = const [
+    '1.0.0.1', '8.8.4.4', '9.9.9.9', '149.112.112.112', '208.67.222.222',
+    '208.67.220.220', '8.20.247.20', '94.140.14.14', '94.140.15.15',
+    '78.157.42.101', '10.202.10.11', '176.119.1.2', '114.114.114.114',
+    '1.2.4.8', '210.2.4.8', '77.88.8.8', '77.88.8.1', '185.228.168.9',
+    '185.228.169.9', '198.101.242.72', '23.253.163.53', '176.103.130.130',
+    '176.103.130.131', '185.51.200.2', '178.22.122.100', '194.36.174.161',
+    '1.1.1.2', '1.0.0.2', '208.67.222.123', '208.67.220.123', '10.202.10.202'
   ];
 
   bool isValidIp(String ip) {
@@ -37,13 +50,13 @@ class DnsManager {
   Future<List<String>> loadSources() async {
     final prefs = await SharedPreferences.getInstance();
     final sources = prefs.getStringList(_sourcesKey);
-    // استفاده از لینک‌های ضد فیلتر و میرورهای گیت‌هاب
+    // استفاده از پروکسی‌های قدرتمند برای دور زدن مسدودیت گیت‌هاب
     return sources == null || sources.isEmpty
         ? const [
-            'https://raw.githubusercontent.com/smokeme/Public-DNS-Collector/main/lists/ipv4.txt',
+            'https://mirror.ghproxy.com/https://raw.githubusercontent.com/smokeme/Public-DNS-Collector/main/lists/ipv4.txt',
             'https://ghproxy.net/https://raw.githubusercontent.com/smokeme/Public-DNS-Collector/main/lists/ipv4.txt',
-            'https://raw.kkgithub.com/smokeme/Public-DNS-Collector/main/lists/ipv4.txt',
-            'https://fastly.jsdelivr.net/gh/smokeme/Public-DNS-Collector@main/lists/ipv4.txt'
+            'https://raw.gitmirror.com/smokeme/Public-DNS-Collector/main/lists/ipv4.txt',
+            'https://cdn.jsdelivr.net/gh/smokeme/Public-DNS-Collector@main/lists/ipv4.txt'
           ]
         : sources;
   }
@@ -78,20 +91,20 @@ class DnsManager {
     return found.toList();
   }
 
-  // برگرداندن -1 در صورت قطعی اینترنت، برگرداندن 0 در صورت تکراری بودن آی‌پی‌ها
-  Future<int> fetchFromNetwork() async {
+  Future<Map<String, dynamic>> fetchFromNetwork() async {
     final sources = await loadSources();
     final masterPool = (await loadMasterPool()).toSet();
     var newAdded = 0;
     bool atLeastOneSuccess = false;
 
+    // تلاش برای نفوذ به گیت‌هاب
     for (final rawUrl in sources) {
       final url = rawUrl.trim();
       if (url.isEmpty) continue;
       try {
         final response = await http
-            .get(Uri.parse(url), headers: const {'User-Agent': 'GamingDNS/1.0'})
-            .timeout(const Duration(seconds: 15)); // افزایش زمان برای اینترنت ایران
+            .get(Uri.parse(url), headers: const {'User-Agent': 'Mozilla/5.0'})
+            .timeout(const Duration(seconds: 5)); // تست سریع برای جلوگیری از گیر کردن برنامه
         
         if (response.statusCode == 200) {
           atLeastOneSuccess = true;
@@ -99,15 +112,32 @@ class DnsManager {
             if (masterPool.add(ip)) newAdded++;
           }
         }
-      } catch (_) {
-        // در صورت مسدود بودن، سراغ لینک جایگزین بعدی می‌رود
+      } catch (_) {}
+    }
+
+    if (atLeastOneSuccess) {
+      if (newAdded > 0) await saveMasterPool(masterPool.toList());
+      return {'status': 'github_success', 'count': newAdded};
+    }
+
+    // اگر گیت‌هاب مسدود بود، تزریق دی‌ان‌اس از آرشیو پنهان به صورت رندوم
+    int offlineAdded = 0;
+    final random = Random();
+    List<String> shuffledArchive = List.from(_deepArchiveDns)..shuffle(random);
+    
+    for (var ip in shuffledArchive) {
+      if (masterPool.add(ip)) {
+        offlineAdded++;
+        if (offlineAdded >= 12) break; // هر بار ۱۲ سرور جدید آزاد می‌کند
       }
     }
 
-    if (newAdded > 0) await saveMasterPool(masterPool.toList());
-    
-    if (!atLeastOneSuccess) return -1; // اتصال کاملاً ناموفق بود
-    return newAdded; // موفق بود (حتی اگر 0 آی‌پی جدید پیدا کند)
+    if (offlineAdded > 0) {
+      await saveMasterPool(masterPool.toList());
+      return {'status': 'offline_injected', 'count': offlineAdded};
+    }
+
+    return {'status': 'exhausted', 'count': 0};
   }
 
   Future<File?> generateExportFile() async {
