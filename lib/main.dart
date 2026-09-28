@@ -70,7 +70,6 @@ class _DnsScreenState extends State<DnsScreen> {
     for (var ip in _dnsManager.premiumGamingDns) {
       initialList.add(DnsServer(ip: ip, isPremium: true));
     }
-
     for (var ip in savedIps) {
       if (!_dnsManager.premiumGamingDns.contains(ip)) {
         initialList.add(DnsServer(ip: ip, isPremium: false));
@@ -78,7 +77,6 @@ class _DnsScreenState extends State<DnsScreen> {
     }
 
     if (!mounted) return;
-
     setState(() {
       displayList = initialList;
       totalPoolSize = pool.length;
@@ -91,14 +89,16 @@ class _DnsScreenState extends State<DnsScreen> {
   Future<void> huntNewDns() async {
     setState(() => isLoading = true);
 
-    int newFound = await _dnsManager.fetchFromNetwork();
-    if (newFound > 0 && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$newFound سرور جدید پیدا و به استخر افزوده شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-    } else if (mounted) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("سورس‌ها تکراری است یا اینترنت ضعیف است.", textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
-    }
-
+    int result = await _dnsManager.fetchFromNetwork();
     if (!mounted) return;
+
+    if (result > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$result سرور جدید پیدا و افزوده شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+    } else if (result == 0) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("همه دی‌ان‌اس‌ها آپدیت هستند (آی‌پی جدیدی نبود).", textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
+    } else {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("خطا در اتصال به گیت‌هاب. لطفاً VPN خود را موقتاً روشن کنید.", textDirection: TextDirection.rtl), backgroundColor: Colors.redAccent));
+    }
 
     List<String> masterPool = await _dnsManager.loadMasterPool();
     masterPool.shuffle(Random());
@@ -124,7 +124,6 @@ class _DnsScreenState extends State<DnsScreen> {
     await _dnsManager.saveDisplayList(displayStrings);
 
     if (!mounted) return;
-
     setState(() {
       displayList = batch;
       totalPoolSize = masterPool.length;
@@ -146,7 +145,7 @@ class _DnsScreenState extends State<DnsScreen> {
       await Future.wait(chunk.map((server) async {
         final stopwatch = Stopwatch()..start();
         try {
-          final socket = await Socket.connect(server.ip, 53, timeout: const Duration(milliseconds: 1500));
+          final socket = await Socket.connect(server.ip, 53, timeout: const Duration(milliseconds: 2000));
           socket.destroy();
           server.ping = stopwatch.elapsedMilliseconds;
         } catch (e) {
@@ -156,7 +155,6 @@ class _DnsScreenState extends State<DnsScreen> {
     }
 
     if (!mounted) return;
-
     setState(() {
       displayList.sort((a, b) => a.ping.compareTo(b.ping));
       isTestingPing = false;
@@ -164,16 +162,13 @@ class _DnsScreenState extends State<DnsScreen> {
   }
 
   Future<void> pickAndImportFile() async {
-    final PlatformFile? pickedFile = await FilePicker.pickFile(
-      type: FileType.custom,
-      allowedExtensions: ['txt'],
-    );
+    final PlatformFile? pickedFile = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['txt']);
     if (pickedFile != null && pickedFile.path != null) {
       final File file = File(pickedFile.path!);
       String contents = await file.readAsString();
       if (!mounted) return;
-      List<String> newIps = _dnsManager.extractIpsFromText(contents);
       
+      List<String> newIps = _dnsManager.extractIpsFromText(contents);
       if (newIps.isNotEmpty) {
         List<String> masterPool = await _dnsManager.loadMasterPool();
         masterPool.addAll(newIps);
@@ -181,7 +176,7 @@ class _DnsScreenState extends State<DnsScreen> {
         if (!mounted) return;
         
         setState(() => totalPoolSize = masterPool.toSet().length);
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${newIps.length} دی‌ان‌اس استخراج شد.", textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${newIps.length} دی‌ان‌اس استخراج شد.", textDirection: TextDirection.rtl), backgroundColor: Colors.green));
       }
     }
   }
@@ -193,16 +188,10 @@ class _DnsScreenState extends State<DnsScreen> {
     setState(() => isLoading = false);
 
     if (exportFile != null) {
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(exportFile.path)],
-          text: 'بکاپ DNS های من',
-        ),
-      );
+      await SharePlus.instance.share(ShareParams(files: [XFile(exportFile.path)], text: 'بکاپ DNS های من'));
     }
   }
 
-  // --- دیالوگ‌های افزودن DNS و لینک گیت‌هاب ---
   void _showAddOptionsModal() {
     showModalBottomSheet(
       context: context,
@@ -212,22 +201,8 @@ class _DnsScreenState extends State<DnsScreen> {
         return SafeArea(
           child: Wrap(
             children: [
-              ListTile(
-                leading: const Icon(Icons.dns, color: Colors.greenAccent),
-                title: const Text("افزودن DNS تکی", style: TextStyle(fontWeight: FontWeight.bold)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showAddSingleDnsDialog();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.link, color: Colors.orangeAccent),
-                title: const Text("افزودن لینک سورس (گیت‌هاب)", style: TextStyle(fontWeight: FontWeight.bold)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showAddSourceDialog();
-                },
-              ),
+              ListTile(leading: const Icon(Icons.dns, color: Colors.greenAccent), title: const Text("افزودن DNS تکی", style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { Navigator.pop(context); _showAddSingleDnsDialog(); }),
+              ListTile(leading: const Icon(Icons.link, color: Colors.orangeAccent), title: const Text("افزودن لینک سورس", style: TextStyle(fontWeight: FontWeight.bold)), onTap: () { Navigator.pop(context); _showAddSourceDialog(); }),
             ],
           ),
         );
@@ -241,11 +216,7 @@ class _DnsScreenState extends State<DnsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("افزودن DNS جدید", style: TextStyle(fontSize: 16)),
-        content: TextField(
-          controller: ipController,
-          decoration: const InputDecoration(hintText: "مثال: 8.8.8.8"),
-          keyboardType: TextInputType.number,
-        ),
+        content: TextField(controller: ipController, decoration: const InputDecoration(hintText: "مثال: 8.8.8.8"), keyboardType: TextInputType.number),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("لغو")),
           ElevatedButton(
@@ -275,12 +246,8 @@ class _DnsScreenState extends State<DnsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("افزودن لینک منبع (txt)", style: TextStyle(fontSize: 16)),
-        content: TextField(
-          controller: urlController,
-          decoration: const InputDecoration(hintText: "https://..."),
-          keyboardType: TextInputType.url,
-        ),
+        title: const Text("افزودن لینک منبع", style: TextStyle(fontSize: 16)),
+        content: TextField(controller: urlController, decoration: const InputDecoration(hintText: "https://..."), keyboardType: TextInputType.url),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("لغو")),
           ElevatedButton(
@@ -342,12 +309,7 @@ class _DnsScreenState extends State<DnsScreen> {
             )
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.deepPurpleAccent,
-        onPressed: _showAddOptionsModal,
-        tooltip: "افزودن دستی",
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+      floatingActionButton: FloatingActionButton(backgroundColor: Colors.deepPurpleAccent, onPressed: _showAddOptionsModal, child: const Icon(Icons.add, color: Colors.white)),
       body: Column(
         children: [
           Container(
@@ -360,23 +322,13 @@ class _DnsScreenState extends State<DnsScreen> {
                 const Text("تعداد:", style: TextStyle(fontSize: 14)),
                 const SizedBox(width: 8),
                 DropdownButton<int>(
-                  value: selectedBatchSize,
-                  dropdownColor: const Color(0xFF2C2C2C),
-                  underline: Container(),
-                  items: [25, 50, 100].map((int value) {
-                    return DropdownMenuItem<int>(value: value, child: Text("$value"));
-                  }).toList(),
-                  onChanged: (int? newValue) {
-                    if (newValue != null) setState(() => selectedBatchSize = newValue);
-                  },
+                  value: selectedBatchSize, dropdownColor: const Color(0xFF2C2C2C), underline: Container(),
+                  items: [25, 50, 100].map((int value) => DropdownMenuItem<int>(value: value, child: Text("$value"))).toList(),
+                  onChanged: (int? newValue) { if (newValue != null) setState(() => selectedBatchSize = newValue); },
                 ),
                 const SizedBox(width: 15),
                 ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orangeAccent,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orangeAccent, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                   onPressed: isLoading || isTestingPing ? null : huntNewDns,
                   icon: const Icon(Icons.radar),
                   label: const Text("شکار جدید", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -398,31 +350,21 @@ class _DnsScreenState extends State<DnsScreen> {
                           return Card(
                             margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             color: isConnected ? Colors.deepPurple.withValues(alpha: 0.3) : const Color(0xFF252525),
-                            shape: RoundedRectangleBorder(
-                              side: BorderSide(color: isConnected ? Colors.deepPurpleAccent : Colors.transparent, width: 2),
-                              borderRadius: BorderRadius.circular(10)
-                            ),
+                            shape: RoundedRectangleBorder(side: BorderSide(color: isConnected ? Colors.deepPurpleAccent : Colors.transparent, width: 2), borderRadius: BorderRadius.circular(10)),
                             child: ListTile(
                               title: Text(server.ip, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                               subtitle: Row(
                                 children: [
                                   Text(
                                     server.ping == 9999 ? "TimeOut" : "${server.ping} ms",
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: server.ping < 100 ? Colors.greenAccent : (server.ping == 9999 ? Colors.redAccent : Colors.amberAccent)
-                                    ),
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: server.ping < 100 ? Colors.greenAccent : (server.ping == 9999 ? Colors.redAccent : Colors.amberAccent)),
                                   ),
                                   const SizedBox(width: 10),
-                                  if (server.isPremium)
-                                    const Text("🎮 پرمیوم", style: TextStyle(color: Colors.orangeAccent, fontSize: 11)),
+                                  if (server.isPremium) const Text("🎮 پرمیوم", style: TextStyle(color: Colors.orangeAccent, fontSize: 11)),
                                 ],
                               ),
                               trailing: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isConnected ? Colors.redAccent : Colors.deepPurpleAccent,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                ),
+                                style: ElevatedButton.styleFrom(backgroundColor: isConnected ? Colors.redAccent : Colors.deepPurpleAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                                 onPressed: () => isConnected ? disconnectDns() : connectDns(server.ip),
                                 child: Text(isConnected ? 'قطع' : 'اتصال', style: const TextStyle(color: Colors.white)),
                               ),
