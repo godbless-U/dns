@@ -8,6 +8,7 @@ class DnsManager {
   static const _masterPoolKey = 'master_dns_pool';
   static const _displayListKey = 'display_dns_list';
 
+  // سرورهای پرمیوم پایه و ثابت (بهترین‌های پابلیک)
   final List<String> premiumGamingDns = const [
     '78.157.42.100', '176.119.1.1', '10.202.10.10', '119.29.29.29',
     '223.5.5.5', '8.26.56.26', '209.244.0.3', '1.1.1.1', '8.8.8.8',
@@ -25,6 +26,7 @@ class DnsManager {
 
     final a = octets[0]!;
     final b = octets[1]!;
+    // حذف آی‌پی‌های لوکال و نامعتبر
     final isPrivate = a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) || a == 127 || (a == 169 && b == 254);
     return !isPrivate;
   }
@@ -38,13 +40,19 @@ class DnsManager {
     final prefs = await SharedPreferences.getInstance();
     final sources = prefs.getStringList(_sourcesKey);
     
-    // استفاده از CDN های جهانی و بدون فیلتر برای اتصال مستقیم به گیت‌هاب بدون ارور
+    // ادغام دیتابیس‌های Luna-Dns (مخصوص گیم) و Public-DNS با مسیرهای ضدتحریم
     return sources == null || sources.isEmpty
         ? const [
-            'https://cdn.jsdelivr.net/gh/smokeme/Public-DNS-Collector@main/lists/ipv4.txt',
-            'https://fastly.jsdelivr.net/gh/smokeme/Public-DNS-Collector@main/lists/ipv4.txt',
-            'https://gcore.jsdelivr.net/gh/smokeme/Public-DNS-Collector@main/lists/ipv4.txt',
-            'https://raw.kkgithub.com/smokeme/Public-DNS-Collector/main/lists/ipv4.txt'
+            // مخزن Luna-Dns (تخصصی برای PUBG, CoD Mobile, Mobile Legends)
+            'https://fastly.jsdelivr.net/gh/Luna-Dns/Luna-Dns@main/dns.txt',
+            'https://raw.kkgithub.com/Luna-Dns/Luna-Dns/main/dns.txt',
+            
+            // مخزن Public DNS Directory (لیست جهانی و عظیم)
+            'https://fastly.jsdelivr.net/gh/public-dns/public-dns-directory@master/nameservers.txt',
+            'https://raw.kkgithub.com/public-dns/public-dns-directory/master/nameservers.txt',
+            
+            // مخزن کمکی و پشتیبان
+            'https://fastly.jsdelivr.net/gh/smokeme/Public-DNS-Collector@main/lists/ipv4.txt'
           ]
         : sources;
   }
@@ -71,6 +79,7 @@ class DnsManager {
 
   List<String> extractIpsFromText(String text) {
     final found = <String>{};
+    // این موتور به صورت هوشمند آی‌پی‌ها را از بین کدهای HTML، فایل‌های CSV یا متون ساده بیرون می‌کشد
     final candidates = RegExp(r'(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)').allMatches(text);
     for (final match in candidates) {
       final ip = match.group(0)!;
@@ -89,21 +98,20 @@ class DnsManager {
       final url = rawUrl.trim();
       if (url.isEmpty) continue;
       try {
-        // اختصاص ۲۰ ثانیه زمان برای دانلود فایل‌های عظیم چند هزار خطی
         final response = await http
             .get(Uri.parse(url), headers: const {'User-Agent': 'Mozilla/5.0'})
-            .timeout(const Duration(seconds: 20));
+            .timeout(const Duration(seconds: 15));
         
         if (response.statusCode == 200 && response.body.isNotEmpty) {
           success = true;
           final extracted = extractIpsFromText(response.body);
           masterPool.addAll(extracted);
           
-          // دریافت هزاران دی‌ان‌اس با یک اتصال موفق
-          if (extracted.length > 500) break; 
+          // محدودیت دانلود برای جلوگیری از اشغال حافظه رم گوشی (توقف پس از شکار 800 دی‌ان‌اس)
+          if (extracted.length > 800) break; 
         }
       } catch (_) {
-        // اگر یک CDN مسدود بود، بدون خطا دادن سراغ سرور بعدی می‌رود
+        // نادیده گرفتن خطا و پرش به لینک جایگزین بعدی
       }
     }
 
