@@ -32,15 +32,21 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Upgrade Gradle Wrapper to 8.14 (Flutter 3.27+ Requirement)
+      - name: Fix Gradle & Properties for Flutter 3.27+
         run: |
           cd android
+          
+          # ۱. ارتقای اجباری گریدل به نسخه ۸.۱۴ (رفع ارور قبلی)
           mkdir -p gradle/wrapper
           echo "distributionBase=GRADLE_USER_HOME" > gradle/wrapper/gradle-wrapper.properties
           echo "distributionPath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
           echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.14-all.zip" >> gradle/wrapper/gradle-wrapper.properties
           echo "zipStoreBase=GRADLE_USER_HOME" >> gradle/wrapper/gradle-wrapper.properties
           echo "zipStorePath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
+          
+          # ۲. اصلاح تنظیمات قدیمی کاتلین و DSL در فایل gradle.properties
+          sed -i 's/android.newDsl=false/android.newDsl=true/g' gradle.properties
+          sed -i 's/android.builtInKotlin=false/android.builtInKotlin=true/g' gradle.properties
 
       - name: Build release APK
         run: flutter build apk --release
