@@ -26,39 +26,11 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.1'
           channel: stable
           cache: true
 
-      # The uploaded project originally contained only a partial Android
-      # platform. Flutter generates the matching Gradle wrapper/templates.
-      # We restore the app-specific Android files immediately afterwards.
-      - name: Generate Flutter Android platform
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/gaming_dns_backup
-          cp android/app/src/main/AndroidManifest.xml /tmp/gaming_dns_backup/AndroidManifest.xml
-          cp android/app/src/main/kotlin/com/example/gaming_dns/MainActivity.kt /tmp/gaming_dns_backup/MainActivity.kt
-          cp android/app/src/main/kotlin/com/example/gaming_dns/GamingVpnService.kt /tmp/gaming_dns_backup/GamingVpnService.kt
-          cp pubspec.yaml /tmp/gaming_dns_backup/pubspec.yaml
-
-          flutter create --platforms=android --org com.example --project-name gaming_dns .
-
-          cp /tmp/gaming_dns_backup/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-          cp /tmp/gaming_dns_backup/MainActivity.kt android/app/src/main/kotlin/com/example/gaming_dns/MainActivity.kt
-          cp /tmp/gaming_dns_backup/GamingVpnService.kt android/app/src/main/kotlin/com/example/gaming_dns/GamingVpnService.kt
-          cp /tmp/gaming_dns_backup/pubspec.yaml pubspec.yaml
-
-          # flutter create generates a default widget_test.dart referencing MyApp.
-          # This project does not use that template test.
-          rm -rf test
-
       - name: Get dependencies
         run: flutter pub get
-
-      - name: Analyze Dart code
-        run: flutter analyze
 
       - name: Build release APK
         run: flutter build apk --release
