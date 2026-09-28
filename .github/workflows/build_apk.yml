@@ -29,24 +29,35 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Recreate Clean Android Project
+        run: |
+          # ۱. گرفتن بکاپ از کدهای ارزشمند VPN و ظاهر برنامه شما
+          mkdir -p /tmp/my_backup/res/drawable /tmp/my_backup/res/values
+          cp android/app/src/main/AndroidManifest.xml /tmp/my_backup/
+          cp android/app/src/main/kotlin/com/example/gaming_dns/MainActivity.kt /tmp/my_backup/
+          cp android/app/src/main/kotlin/com/example/gaming_dns/GamingVpnService.kt /tmp/my_backup/
+          cp android/app/src/main/res/drawable/ic_launcher.xml /tmp/my_backup/res/drawable/ || true
+          cp android/app/src/main/res/values/styles.xml /tmp/my_backup/res/values/ || true
+          cp android/app/src/main/res/values/colors.xml /tmp/my_backup/res/values/ || true
+
+          # ۲. پاک کردن پوشه قدیمی و دارای ارور
+          rm -rf android
+
+          # ۳. ساخت پوشه اندروید کاملاً جدید و هماهنگ با سرورهای امروزی
+          flutter create --platforms=android --org com.example --project-name gaming_dns .
+
+          # ۴. بازگرداندن کدهای شما به پوشه جدید
+          cp /tmp/my_backup/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          cp /tmp/my_backup/MainActivity.kt android/app/src/main/kotlin/com/example/gaming_dns/MainActivity.kt
+          cp /tmp/my_backup/GamingVpnService.kt android/app/src/main/kotlin/com/example/gaming_dns/GamingVpnService.kt
+          
+          mkdir -p android/app/src/main/res/drawable android/app/src/main/res/values
+          cp /tmp/my_backup/res/drawable/ic_launcher.xml android/app/src/main/res/drawable/ic_launcher.xml || true
+          cp /tmp/my_backup/res/values/styles.xml android/app/src/main/res/values/styles.xml || true
+          cp /tmp/my_backup/res/values/colors.xml android/app/src/main/res/values/colors.xml || true
+
       - name: Get dependencies
         run: flutter pub get
-
-      - name: Fix Gradle & Properties for Flutter 3.27+
-        run: |
-          cd android
-          
-          # ۱. ارتقای اجباری گریدل به نسخه ۸.۱۴ (رفع ارور قبلی)
-          mkdir -p gradle/wrapper
-          echo "distributionBase=GRADLE_USER_HOME" > gradle/wrapper/gradle-wrapper.properties
-          echo "distributionPath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.14-all.zip" >> gradle/wrapper/gradle-wrapper.properties
-          echo "zipStoreBase=GRADLE_USER_HOME" >> gradle/wrapper/gradle-wrapper.properties
-          echo "zipStorePath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
-          
-          # ۲. اصلاح تنظیمات قدیمی کاتلین و DSL در فایل gradle.properties
-          sed -i 's/android.newDsl=false/android.newDsl=true/g' gradle.properties
-          sed -i 's/android.builtInKotlin=false/android.builtInKotlin=true/g' gradle.properties
 
       - name: Build release APK
         run: flutter build apk --release
