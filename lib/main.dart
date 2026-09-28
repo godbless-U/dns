@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dns_manager.dart';
@@ -89,7 +90,6 @@ class _DnsScreenState extends State<DnsScreen> {
   Future<void> huntNewDns() async {
     setState(() => isLoading = true);
 
-    // اتصال قدرتمند و مستقیم به گیت‌هاب 
     final result = await _dnsManager.fetchFromNetwork();
     if (!mounted) return;
 
@@ -100,6 +100,8 @@ class _DnsScreenState extends State<DnsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$count دی‌ان‌اس جدید از گیت‌هاب شکار شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.green));
     } else if (status == 'success' && count == 0) {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("گیت‌هاب چک شد. سرورها آپدیت هستند.", textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
+    } else if (status == 'offline_injected') {
+       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("گیت‌هاب کاملاً مسدود بود، اما $count سرور از آرشیو پنهان استخراج شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
     } else {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("خطای اینترنت. لطفاً دسترسی شبکه را بررسی کنید.", textDirection: TextDirection.rtl), backgroundColor: Colors.redAccent));
     }
@@ -141,8 +143,7 @@ class _DnsScreenState extends State<DnsScreen> {
     if (!mounted) return;
     setState(() => isTestingPing = true);
 
-    // تست همزمان 25 دی‌ان‌اس برای افزایش چشمگیر سرعت پینگ‌گیری
-    int chunkSize = 25; 
+    int chunkSize = 25; // تست همزمان ۲۵ سرور برای افزایش چشمگیر سرعت
     for (int i = 0; i < displayList.length; i += chunkSize) {
       int end = (i + chunkSize < displayList.length) ? i + chunkSize : displayList.length;
       var chunk = displayList.sublist(i, end);
@@ -158,7 +159,6 @@ class _DnsScreenState extends State<DnsScreen> {
         }
       }));
       
-      // آپدیت زنده رابط کاربری حین پینگ گرفتن
       if (mounted) setState(() {}); 
     }
 
@@ -331,7 +331,7 @@ class _DnsScreenState extends State<DnsScreen> {
                 const SizedBox(width: 5),
                 DropdownButton<int>(
                   value: selectedBatchSize, dropdownColor: const Color(0xFF2C2C2C), underline: Container(),
-                  // قابلیت انتخاب تا 500 دی‌ان‌اس به صورت همزمان
+                  // قابلیت انتخاب تا ۵۰۰ دی‌ان‌اس به صورت همزمان
                   items: [50, 100, 200, 500].map((int value) => DropdownMenuItem<int>(value: value, child: Text("$value"))).toList(),
                   onChanged: (int? newValue) { if (newValue != null) setState(() => selectedBatchSize = newValue); },
                 ),
