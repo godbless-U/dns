@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
-import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dns_manager.dart';
@@ -51,7 +50,7 @@ class _DnsScreenState extends State<DnsScreen> {
   bool isLoading = false;
   bool isTestingPing = false;
   String? connectedDns;
-  int selectedBatchSize = 25;
+  int selectedBatchSize = 100; // پیش‌فرض برای دیدن لیست طولانی
   int totalPoolSize = 0;
 
   @override
@@ -90,25 +89,23 @@ class _DnsScreenState extends State<DnsScreen> {
   Future<void> huntNewDns() async {
     setState(() => isLoading = true);
 
+    // اتصال قدرتمند و مستقیم به گیت‌هاب 
     final result = await _dnsManager.fetchFromNetwork();
     if (!mounted) return;
 
     final status = result['status'];
     final count = result['count'];
 
-    // پیام‌های هوشمند بر اساس نوع پیدا شدن سرورها
-    if (status == 'github_success' && count > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$count سرور جدید مستقیماً از گیت‌هاب شکار شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-    } else if (status == 'github_success' && count == 0) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("گیت‌هاب بررسی شد اما همه آپدیت هستند.", textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
-    } else if (status == 'offline_injected') {
-       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("گیت‌هاب فیلتر بود، اما $count سرور از آرشیو هوشمند داخلی استخراج شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
+    if (status == 'success' && count > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$count دی‌ان‌اس جدید از گیت‌هاب شکار شد!", textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+    } else if (status == 'success' && count == 0) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("گیت‌هاب چک شد. سرورها آپدیت هستند.", textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
     } else {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("تمام منابع جستجو شدند و سرور جدیدی نمانده است.", textDirection: TextDirection.rtl), backgroundColor: Colors.redAccent));
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("خطای اینترنت. لطفاً دسترسی شبکه را بررسی کنید.", textDirection: TextDirection.rtl), backgroundColor: Colors.redAccent));
     }
 
     List<String> masterPool = await _dnsManager.loadMasterPool();
-    masterPool.shuffle(Random());
+    masterPool.shuffle(); // بر زدن سرورها برای نمایش دی‌ان‌اس‌های جدید در هر بار کلیک
 
     List<DnsServer> batch = [];
     List<String> displayStrings = [];
@@ -137,7 +134,6 @@ class _DnsScreenState extends State<DnsScreen> {
       isLoading = false;
     });
 
-    // به محض پیدا کردن، بلافاصله شروع به پینگ گرفتن و تست می‌کند
     testAllPingsAndSort();
   }
 
@@ -145,7 +141,8 @@ class _DnsScreenState extends State<DnsScreen> {
     if (!mounted) return;
     setState(() => isTestingPing = true);
 
-    int chunkSize = 15;
+    // تست همزمان 25 دی‌ان‌اس برای افزایش چشمگیر سرعت پینگ‌گیری
+    int chunkSize = 25; 
     for (int i = 0; i < displayList.length; i += chunkSize) {
       int end = (i + chunkSize < displayList.length) ? i + chunkSize : displayList.length;
       var chunk = displayList.sublist(i, end);
@@ -160,11 +157,13 @@ class _DnsScreenState extends State<DnsScreen> {
           server.ping = 9999;
         }
       }));
+      
+      // آپدیت زنده رابط کاربری حین پینگ گرفتن
+      if (mounted) setState(() {}); 
     }
 
     if (!mounted) return;
     setState(() {
-      // سرورها را به ترتیب بهترین (کمترین) پینگ می‌چیند
       displayList.sort((a, b) => a.ping.compareTo(b.ping));
       isTestingPing = false;
     });
@@ -328,14 +327,15 @@ class _DnsScreenState extends State<DnsScreen> {
               children: [
                 Text("استخر: $totalPoolSize", style: const TextStyle(fontSize: 13, color: Colors.grey)),
                 const Spacer(),
-                const Text("تعداد:", style: TextStyle(fontSize: 14)),
-                const SizedBox(width: 8),
+                const Text("تعداد نمایش:", style: TextStyle(fontSize: 13)),
+                const SizedBox(width: 5),
                 DropdownButton<int>(
                   value: selectedBatchSize, dropdownColor: const Color(0xFF2C2C2C), underline: Container(),
-                  items: [25, 50, 100].map((int value) => DropdownMenuItem<int>(value: value, child: Text("$value"))).toList(),
+                  // قابلیت انتخاب تا 500 دی‌ان‌اس به صورت همزمان
+                  items: [50, 100, 200, 500].map((int value) => DropdownMenuItem<int>(value: value, child: Text("$value"))).toList(),
                   onChanged: (int? newValue) { if (newValue != null) setState(() => selectedBatchSize = newValue); },
                 ),
-                const SizedBox(width: 15),
+                const SizedBox(width: 10),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.orangeAccent, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                   onPressed: isLoading || isTestingPing ? null : huntNewDns,
